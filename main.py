@@ -77,7 +77,7 @@ def remind_loop():
 @bot.message_handler(commands=['add'])
 def add_birthday(message):
     chat_id = message.chat.id
-    bot.reply_to(message, "Отправь мне имя и дату рождения в формате Имя: ДД.ММ.ГГГГ.")
+    bot.reply_to(message, "Отправь мне имя и дату рождения в формате Фамилия Имя: ДД.ММ.ГГГГ.")
     bot.register_next_step_handler(message, process_birthday_input)
 
 
@@ -88,7 +88,7 @@ def process_birthday_input(message):
         save_birthday(name, birthday_date.strftime("%Y-%m-%d"))
         bot.reply_to(message, f"Спасибо! {name} добавлен(а) в список дней рождения.")
     except ValueError:
-        bot.reply_to(message, "Некорректный формат ввода. Пожалуйста, используйте Имя: ДД.ММ.ГГГГ.")
+        bot.reply_to(message, "Некорректный формат ввода. Пожалуйста, используйте Фамилию Имя: ДД.ММ.ГГГГ.")
 
 
 # Функция для отображения встроенной клавиатуры с выбором количества дней
@@ -134,6 +134,27 @@ def remind_birthdays_command(message):
 def delete_message_later(chat_id, message_id, delay):
     time.sleep(delay)
     bot.delete_message(chat_id, message_id)
+
+@bot.message_handler(commands=['delete'])
+def delete_birthday(message):
+    msg = bot.reply_to(message, "Отправь мне имя сотрудника, которого нужно удалить из базы данных.")
+    bot.register_next_step_handler(msg, process_delete_input)
+
+def process_delete_input(message):
+    name = message.text  # Получаем имя сотрудника для удаления
+    if delete_birthday_by_name(name):
+        bot.reply_to(message, f"Запись о {name} удалена из списка дней рождения.")
+    else:
+        bot.reply_to(message, "Запись не найдена или произошла ошибка при удалении.")
+
+def delete_birthday_by_name(name):
+    cursor.execute('SELECT * FROM birthdays WHERE name = ?', (name,))
+    if cursor.fetchone():
+        cursor.execute('DELETE FROM birthdays WHERE name = ?', (name,))
+        conn.commit()
+        return True
+    return False
+
 
 if __name__ == "__main__":
     threading.Thread(target=remind_loop).start()
