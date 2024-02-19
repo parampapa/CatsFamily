@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-TOKEN = os.environ.get('TOKEN')
+TOKEN =
 # chat_id = ""
 
 bot = telebot.TeleBot(TOKEN)
