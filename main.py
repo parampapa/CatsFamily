@@ -1,4 +1,4 @@
-# import os
+import os
 import sqlite3
 import threading
 import time
@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-TOKEN =
-# chat_id = "6166156542"
+TOKEN = os.environ.get('TOKEN')
+# chat_id = ""
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -47,8 +47,8 @@ conn.commit()
 def load_birthdays():
     """
     Функция загружает из базы данных информацию о днях рождения
+    возвращает список словарей с информацией о днях рождения
 
-    возвращает  список словарей с информацией о днях рождения
     """
     cursor.execute("SELECT name, birthday FROM birthdays")
     return [{"name": row[0], "birthday": row[1]} for row in cursor.fetchall()]
@@ -60,6 +60,7 @@ def save_birthday(name, birthday):
     Принимает:
     name - имя
     birthday - дата рождения
+
     """
     cursor.execute(
         "INSERT INTO birthdays (name, birthday) VALUES (?, ?)",
@@ -68,12 +69,20 @@ def save_birthday(name, birthday):
     conn.commit()
 
 
+@bot.message_handler(commands=["remind"])
 def remind_birthdays(chat_id: int):
     """
     Функция проверяет есть ли у кого-то день рождения завтра
-    относительно сегодня и отправляет предстоящие дни рождения каждый
-    день с перерывом ровно в 24 часа
-    chat_id - содержится id чата, куда необходимо отправлять
+    относительно текущего дня.
+    Принимает chat_id - chat_id пользователя, которому отправится информация.
+
+    Переменная today - текущий день
+    tomorrow - следующий день
+    birthdays - данные о всех днях рождения из БД
+
+    В качестве ответа отправляет информацию о днях рождения если они есть,
+    иначе отправляет сообщение "Завтра дней рождения нет"
+
     """
     today = datetime.now().date()
     tomorrow = today + timedelta(days=1)
@@ -91,16 +100,15 @@ def remind_birthdays(chat_id: int):
 
 def remind_loop():
     """
-    Функция проверяет есть ли у кого-то день рождения завтра
-    относительно сегодня и отправляет предстоящие дни рождения каждый
+    Функция отправляет информацию о предстоящих днях рождения каждый
     день с перерывом ровно в 24 часа
-    chat_id - содержится id чата, куда необходимо отправлять информацию
-    :return:
+    chat_id - содержится id чата, куда необходимо отправлять информацию.
+
     """
     while True:
         chat_id = (
-            6166156542
-        # Id чата, куда необходимо каждый день отправлять информацию
+
+            # Id чата, куда необходимо каждый день отправлять информацию
         )
         remind_birthdays(chat_id)
         time.sleep(24 * 60 * 60)  # Ожидание 24 часа
@@ -108,6 +116,12 @@ def remind_loop():
 
 @bot.message_handler(commands=["add"])
 def add_birthday(message):
+    """
+    Функция для добавления новой записи в таблицу, запрашивает ввод данных в
+    определенном формате Фамилия Имя: ДД.ММ.ГГГГ.
+    После переводит на функцию process_birthday_input для дальнейшей проверки.
+
+    """
     # chat_id = message.chat.id
     bot.reply_to(
         message,
@@ -118,6 +132,21 @@ def add_birthday(message):
 
 
 def process_birthday_input(message):
+    """
+    Функция для обработки ввода данных в формате Фамилия Имя: ДД.ММ.ГГГГ.
+    Принимает message - объект сообщения, содержащий данные ввода.
+    Принимает name - имя
+    Принимает birthday - дата рождения
+
+    В блоке try проверяется корректность введеных данных и в случае, если все
+    корректно - переводит на функцию save_birthday, которая в свою очередь
+    сохраняет данные
+
+    Если данные были введены не корректно, то отрабатывает блок except, который
+    сообщает пользователю о том, что данные, что он ввел не корректны и
+    вызывается функция для ввода данных
+
+    """
     try:
         name, birthday = message.text.split(": ")
         birthday_date = datetime.strptime(birthday, "%d.%m.%Y").date()
@@ -131,13 +160,22 @@ def process_birthday_input(message):
             "Некорректный формат ввода. "
             "Пожалуйста, используйте Фамилию Имя: ДД.ММ.ГГГГ.",
         )
+        add_birthday(message)
 
 
 # Функция для отображения встроенной клавиатуры
 @bot.message_handler(commands=["upcoming"])
 def display_options(message):
+    """
+    Функция для отображения встроенной клавиатуры
+    options - список с цифрами которые будут в цикле добавляться в нужном
+    формате в клавиатуру
+    markup - в переменной хранится клавиатура наполненная путем наполнения из
+    цикла for, также хранит в себе callback-данные days_{opt}
+
+    """
     markup = InlineKeyboardMarkup()
-    options = ["7", "6", "5", "4", "3", "2"]
+    options = ["30", "6", "5", "4", "3", "2"]
     # Количество дней для выбора
     for opt in options:
         markup.add(
@@ -153,6 +191,23 @@ def display_options(message):
 # Функция для обработки callback-ов от кнопок
 @bot.callback_query_handler(func=lambda call: call.data.startswith("days_"))
 def handle_query(call):
+    """
+    Функция для обработки callback-ов от кнопок
+    Данная функция вызывается, когда пользователь нажимает на какую-либо из
+    представленных ему кнопок.
+    Принимает call - данные callback от кнопки (call.data), извлекает
+    информацию о колличестве дней (days) и вызывает функцию
+    find_upcoming_birthdays для поиска информации в БД и передает в нее
+    количество дней
+    В случае, если дни рождения в заданные период есть, то пользователю
+    выдается информация о предстоящих днях рождения.
+    Если в указанный срок предстоящих дней рождения не обнаружено, то
+    пользователь получает сообщение о том, что в указанное им количество
+    дней - дней рождения не обнаружено.
+    Также вызывается поток, который удаляет информацию, отправленную ботом
+    спустя 10 секунд.
+
+    """
     days = int(call.data.split("_")[1])
     birthdays_list = find_upcoming_birthdays(days)
     if birthdays_list:
@@ -172,6 +227,13 @@ def handle_query(call):
 
 # Функция для поиска предстоящих дней рождения
 def find_upcoming_birthdays(days):
+    """
+    Функция для поиска предстоящих дней рождения
+    Принимает days - количество дней для поиска
+
+    Возвращает список предстоящих дней рождения в указанном периоде
+
+    """
     upcoming_birthdays = []
     today = datetime.now().date()
     for day in range(days + 1):
@@ -187,11 +249,6 @@ def find_upcoming_birthdays(days):
     return upcoming_birthdays
 
 
-@bot.message_handler(commands=["remind"])
-def remind_birthdays_command(message):
-    remind_birthdays(message.chat.id)
-
-
 def delete_message_later(chat_id, message_id, delay):
     time.sleep(delay)
     bot.delete_message(chat_id, message_id)
@@ -199,6 +256,13 @@ def delete_message_later(chat_id, message_id, delay):
 
 @bot.message_handler(commands=["delete"])
 def delete_birthday(message):
+    """
+    По сути блок функций для удаления записи из БД по полученой Фамилии и имени
+    msg - Переменная в которой хранится Фамилия и Имя введеные пользователем,
+    эти данные передаются через register_next_step_handler в следующую функцию
+    process_delete_input.
+
+    """
     msg = bot.reply_to(
         message,
         "Отправь мне фамилию и имя сотрудника, "
@@ -208,6 +272,15 @@ def delete_birthday(message):
 
 
 def process_delete_input(message):
+    """
+    Функция для предоставления ответа пользователю о том что запись из БД была
+    удалена или же о том, что запись не найдена.
+    Функция принимает Фамилию Имя и передает эти данные в функцию
+    delete_birthday_by_name, и если она вернула True, то пользователь получает
+    положительный ответ, если же она возвращает False, то пользователю
+    сообщается, что запись не найдена или произошла ошибка.
+
+    """
     name = message.text  # Получаем имя сотрудника для удаления
     if delete_birthday_by_name(name):
         bot.reply_to(message,
@@ -219,6 +292,13 @@ def process_delete_input(message):
 
 
 def delete_birthday_by_name(name):
+    """
+    Функция для проверки наличия в БД
+    Принимает name - Фамилию Имя
+    Если в БД обнаруживается запись из name - то функция возвращает True, в
+    противном случае False
+
+    """
     cursor.execute("SELECT * FROM birthdays WHERE name = ?",
                    (name,))
     if cursor.fetchone():
