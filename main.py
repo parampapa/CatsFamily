@@ -1,4 +1,4 @@
-from db_connect import DBHelper
+import os
 import threading
 import time
 from datetime import datetime, timedelta
@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-TOKEN = '6982709570:AAEKQIojSf2WSlKdkefJ_geLnkQtBpiUYq0'
+from db_connect import DBHelper
+
+TOKEN = os.environ.get('TOKEN')
 
 
 bot = telebot.TeleBot(TOKEN)
